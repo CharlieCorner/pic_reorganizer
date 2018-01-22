@@ -16,7 +16,13 @@ connection_string = (
     )
 
 select_images_path = """
-    INSERT SQL QUERY HERE
+    SELECT Determinacion.Nombre,
+        Determinacion.IdEjemplar,
+        ObjetoExterno.Ruta,
+        ObjetoExterno.NombreObjeto
+    FROM Determinacion 
+        INNER JOIN (ObjetoExterno INNER JOIN RelObjetoExternoEjemplar ON ObjetoExterno.IdObjetoExterno = RelObjetoExternoEjemplar.IdObjetoExterno) ON Determinacion.IdEjemplar = RelObjetoExternoEjemplar.IdEjemplar
+    ORDER BY Determinacion.Nombre;
 """
 
 pics_final_destination = r'C:\Ruta\al\Destino'
