@@ -2,8 +2,7 @@
 
 import os
 import logging
-import glob
-import pyodbc
+import csv
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from shutil import copyfile
@@ -25,9 +24,11 @@ select_images_path = """
     ORDER BY Determinacion.Nombre;
 """
 
-pics_final_destination = r'C:\Ruta\al\Destino'
+original_pics_common_destination = r'Pictures\Campo'
 
-original_pics_common_destination = r'Ruta\Comun\En\El\Herbario'
+csv_file_location = r'test.csv'
+
+debug_limit = 30
 
 
 def main():
@@ -38,13 +39,31 @@ def main():
 
 def organize_pics(args):
     LOGGER.info("Executing query...")
-    result_set = execute_query(select_images_path)
+    # result_set = execute_query(select_images_path)
+    result_set = get_pic_info_from_csv(csv_file_location)
     tidy_up_pics(args, result_set)
+
+
+def get_pic_info_from_csv(file_location):
+    result_set = []
+
+    with open(file_location, "r") as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            result_set.append(Pic(
+                int(row[2]),
+                row[0],
+                row[1],
+                row[3],
+                row[4]
+            ))
+
+    return result_set
 
 
 def tidy_up_pics(args, result_set):
     # Get the total count of rows in the result set in order to calculate a percentage of progress
-    total_rows = result_set.rowcount
+    total_rows = len(result_set)
 
     # Prepare the destination Folder
     prepare_folder(args.destination)
@@ -55,80 +74,67 @@ def tidy_up_pics(args, result_set):
 
     # If the destination folder is there, iterate over the rows
     # Print the percentage of progress given the number of the row.
-    for row_num, row in enumerate(result_set["results"], 1):
+    for pic_idx, pic in enumerate(result_set, 1):
 
         # This will allow us to keep track of the filename counter for the species
-        if row_num != 1 and row.nombre != last_species_name:
+        if pic_idx != 1 and pic.nombre != last_species_name:
             sample_counter = 1
 
-        last_species_name = row.nombre
-        progress = (row_num * 100) / total_rows
-        LOGGER.info("PROGRESS: %i\%" % progress)
+        last_species_name = pic.nombre
+        LOGGER.info("PROGRESS: %d/%d" % (pic_idx, total_rows))
 
         family_folder = ""
 
         # For each row, check the name of the family (and if it IS a family (id: 9)
         # If it is a family, check/create that a folder exists for the family, if it's not,
         # report it to log and put it in the No Family folder
-        if row.nombreid == 9:
-            family_folder = os.path.join(args.destination, row.familia)
+        if pic.nombreid == 9:
+            family_folder = os.path.join(args.destination, pic.familia)
         else:
-            LOGGER.warning("%s seems not to be a family because it has an ID of %i, we're putting it in the default folder" % (row.nombre, row.nombreid))
+            LOGGER.warning("%s seems not to be a family because it has an ID of %d, we're putting it in the default folder" % (pic.nombre, pic.nombreid))
             family_folder = os.path.join(args.destination, "NoFamily")
 
         prepare_folder(family_folder)
 
         # Create a new folder for the Nombre of the sample and prepare to copy the images to that folder
-        species_folder = os.path.join(family_folder, row.nombre)
+        species_folder = os.path.join(family_folder, pic.nombre)
 
         prepare_folder(species_folder)
+
         # The name of the file should be: Nombre - ID. We need to keep count of the ID so that it goes in ascendant order
-        filename = os.path.join(family_folder, "%s - %s - %i" % (row.nombre, row.nombreArchivo, sample_counter))
+        filename = generate_filename(family_folder, pic.nombre, pic.nombre_archivo, sample_counter)
 
         # Copy and rename the file only if the should_write flag is active, otherwise just print to log
-        if not len(glob.glob(row.nombreArchivo)) > 0 or args.should_overwrite:
-            copy_and_rename_pic(args, filename, row)
+        if not os.path.exists(filename) or args.should_overwrite:
+            copy_and_rename_pic(args, filename, pic)
         else:
             LOGGER.info("Skipping, as we already have a file for %s" % filename)
         sample_counter += 1
 
-        if args.is_debug and row_num == 64:
+        if args.is_debug and pic_idx == debug_limit:
             LOGGER.info("Terminating early due to DEBUG mode...")
             break
 
 
-def copy_and_rename_pic(args, filename, row):
-    original_folder = row.ruta.replace(original_pics_common_destination, "")
-    source_file = os.path.join(args.source, original_folder, row.nombreArchivo)
-    copyfile(source_file, filename)
+def generate_filename(family_folder, nombre, nombre_archivo, sample_counter):
+    extension = os.path.splitext(nombre_archivo)[1]
+    return os.path.join(family_folder, "%s - %d%s" % (nombre, sample_counter, extension))
+
+
+def copy_and_rename_pic(args, filename, pic):
+    source_file = os.path.join(args.source, pic.ruta)
+
+    if args.should_write:
+        LOGGER.info("Renaming and copying %s to %s" % (source_file, filename))
+        copyfile(source_file, filename)
+    else:
+        LOGGER.info("Write switch is OFF, simulating renaming and copying %s to %s" % (source_file, filename))
 
 
 def prepare_folder(folder):
     if not os.path.exists(folder):
         LOGGER.info("Creating folder %s" % folder)
         os.makedirs(folder)
-
-
-def execute_query(query, query_params):
-    result_set = {
-        "titles": [],
-        "results": []
-    }
-
-    # con = pyodbc.connect('DRIVER={};DBQ={};PWD={}'.format(DRV, MDB, PWD))
-    try:
-        with pyodbc.connect(connection_string) as con:
-            with con.cursor() as cursor:
-                # The execute method already prepares the query
-                cursor.execute(query)
-                res = cursor.fetchall()
-                result_set["titles"] = [desc[0] for desc in cursor.description]
-                result_set["results"] = res
-    except Exception as e:
-        LOGGER.error(e)
-        raise
-
-    return result_set
 
 
 def _parse_args():
@@ -141,7 +147,7 @@ def _parse_args():
 
     parser.add_argument('--destination', '-d',
                         help="Specifies the path of the output folder.",
-                        default= os.path.join(os.path.expanduser("~"),"PlantReorganizer"))
+                        default=os.path.join(os.path.expanduser("~"), "PlantReorganizer"))
 
     parser.add_argument("--debug",
                         dest="is_debug",
@@ -154,9 +160,9 @@ def _parse_args():
                         help="Activates the actual writing process to disk, otherwise it is just simulated.")
 
     parser.add_argument("--overwrite", "-o",
-                        dest = "should_overwrite",
-                        action = "store_true",
-                        help = "Specifies if the files should be overwritten.")
+                        dest="should_overwrite",
+                        action="store_true",
+                        help="Specifies if the files should be overwritten.")
 
     args = parser.parse_args()
 
@@ -172,6 +178,19 @@ def configure_logging(is_debug=True):
 
     LOGGER.info("******* Plant Image Reorganizer *******")
     LOGGER.debug("Ready to DEBUG!")
+
+
+class Pic():
+
+    def __init__(self, id_ejemplar, nombre, familia, ruta, nombre_objeto):
+        self.nombreid = id_ejemplar
+        self.nombre = nombre
+        self.familia = familia
+
+        original_folder = ruta.replace(original_pics_common_destination, "")
+        original_folder = original_folder.strip("\\")
+        self.ruta = os.path.join(original_folder, nombre_objeto)
+        self.nombre_archivo = nombre_objeto
 
 
 if __name__ == '__main__':
