@@ -34,7 +34,12 @@ debug_limit = 30
 def main():
     args = _parse_args()
     configure_logging(args.is_debug)
-    organize_pics(args)
+
+    try:
+        organize_pics(args)
+    except Exception as e:
+        LOGGER.exception(e)
+        raise
 
 
 def organize_pics(args):
