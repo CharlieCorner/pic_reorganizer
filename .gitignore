@@ -103,6 +103,7 @@ ENV/
 # Eclipse/PyDev
 .project
 .pydevproject
+.idea
 
 * Access Databases
 *.mdb
