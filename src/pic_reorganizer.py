@@ -26,7 +26,7 @@ select_images_path = """
 
 original_pics_common_destination = r'Pictures\Campo'
 
-csv_file_location = r'test.csv'
+csv_file_location = r'..\test.csv'
 
 debug_limit = 30
 
@@ -38,10 +38,11 @@ def main():
 
 
 def organize_pics(args):
-    LOGGER.info("Executing query...")
+    LOGGER.info("Organizing pics...")
     # result_set = execute_query(select_images_path)
     result_set = get_pic_info_from_csv(csv_file_location)
     tidy_up_pics(args, result_set)
+    LOGGER.info("DONE!!!")
 
 
 def get_pic_info_from_csv(file_location):
@@ -50,6 +51,7 @@ def get_pic_info_from_csv(file_location):
     with open(file_location, "r") as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
+            row = [str.strip(x) for x in row]
             result_set.append(Pic(
                 int(row[2]),
                 row[0],
@@ -102,7 +104,7 @@ def tidy_up_pics(args, result_set):
         prepare_folder(species_folder)
 
         # The name of the file should be: Nombre - ID. We need to keep count of the ID so that it goes in ascendant order
-        filename = generate_filename(family_folder, pic.nombre, pic.nombre_archivo, sample_counter)
+        filename = generate_filename(species_folder, pic.nombre, pic.nombre_archivo, sample_counter)
 
         # Copy and rename the file only if the should_write flag is active, otherwise just print to log
         if not os.path.exists(filename) or args.should_overwrite:
@@ -116,9 +118,9 @@ def tidy_up_pics(args, result_set):
             break
 
 
-def generate_filename(family_folder, nombre, nombre_archivo, sample_counter):
+def generate_filename(folder, nombre, nombre_archivo, sample_counter):
     extension = os.path.splitext(nombre_archivo)[1]
-    return os.path.join(family_folder, "%s - %d%s" % (nombre, sample_counter, extension))
+    return os.path.join(folder, "%s - %d%s" % (nombre, sample_counter, extension))
 
 
 def copy_and_rename_pic(args, filename, pic):
@@ -187,9 +189,9 @@ class Pic():
         self.nombre = nombre
         self.familia = familia
 
-        original_folder = ruta.replace(original_pics_common_destination, "")
-        original_folder = original_folder.strip("\\")
-        self.ruta = os.path.join(original_folder, nombre_objeto)
+        # We remove the leading '\'
+        original_folder = ruta.replace(original_pics_common_destination, "")[1:]
+        self.ruta = os.path.join(original_folder, nombre_objeto.strip(" "))
         self.nombre_archivo = nombre_objeto
 
 
