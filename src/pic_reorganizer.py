@@ -58,11 +58,12 @@ def get_pic_info_from_csv(file_location):
         for row in reader:
             row = [str.strip(x) for x in row]
             result_set.append(Pic(
-                int(row[2]),
                 row[0],
-                row[1],
+                int(row[1]),
+                row[2],
                 row[3],
-                row[4]
+                row[4],
+                row[5]
             ))
 
     return result_set
@@ -189,7 +190,7 @@ def configure_logging(is_debug=True):
 
 class Pic():
 
-    def __init__(self, id_ejemplar, nombre, familia, ruta, nombre_objeto):
+    def __init__(self, nombre, id_ejemplar, ruta, nombre_objeto, genero, familia):
         self.nombreid = id_ejemplar
         self.nombre = nombre
         self.familia = familia
