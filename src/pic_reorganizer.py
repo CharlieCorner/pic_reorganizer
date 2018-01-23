@@ -9,26 +9,11 @@ from shutil import copyfile
 
 LOGGER = logging.getLogger(__name__)
 
-connection_string = (
-    r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};'
-    r'DBQ=C:\path\to\mydb.accdb;'
-    )
+original_pics_common_destination = r'Users\Herbario\Desktop\Proyecto Flora'
 
-select_images_path = """
-    SELECT Determinacion.Nombre,
-        Determinacion.IdEjemplar,
-        ObjetoExterno.Ruta,
-        ObjetoExterno.NombreObjeto
-    FROM Determinacion 
-        INNER JOIN (ObjetoExterno INNER JOIN RelObjetoExternoEjemplar ON ObjetoExterno.IdObjetoExterno = RelObjetoExternoEjemplar.IdObjetoExterno) ON Determinacion.IdEjemplar = RelObjetoExternoEjemplar.IdEjemplar
-    ORDER BY Determinacion.Nombre;
-"""
+csv_file_location = r'test.csv'
 
-original_pics_common_destination = r'Pictures\Campo'
-
-csv_file_location = r'..\db.csv'
-
-debug_limit = 30
+debug_limit = 50
 
 
 def main():
@@ -53,10 +38,11 @@ def organize_pics(args):
 def get_pic_info_from_csv(file_location):
     result_set = []
 
-    with open(file_location, "r") as csvfile:
+    with open(file_location, "r", encoding="UTF-8") as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
             row = [str.strip(x) for x in row]
+            LOGGER.debug(row)
             result_set.append(Pic(
                 row[0],
                 int(row[1]),
@@ -79,7 +65,6 @@ def tidy_up_pics(args, result_set):
     sample_counter = 1
     last_species_name = ""
 
-
     # If the destination folder is there, iterate over the rows
     # Print the percentage of progress given the number of the row.
     for pic_idx, pic in enumerate(result_set, 1):
@@ -91,16 +76,7 @@ def tidy_up_pics(args, result_set):
         last_species_name = pic.nombre
         LOGGER.info("PROGRESS: %d/%d" % (pic_idx, total_rows))
 
-        family_folder = ""
-
-        # For each row, check the name of the family (and if it IS a family (id: 9)
-        # If it is a family, check/create that a folder exists for the family, if it's not,
-        # report it to log and put it in the No Family folder
-        if pic.nombreid == 9:
-            family_folder = os.path.join(args.destination, pic.familia)
-        else:
-            LOGGER.warning("%s seems not to be a family because it has an ID of %d, we're putting it in the default folder" % (pic.nombre, pic.nombreid))
-            family_folder = os.path.join(args.destination, "NoFamily")
+        family_folder = os.path.join(args.destination, pic.familia)
 
         prepare_folder(family_folder)
 
@@ -134,7 +110,17 @@ def copy_and_rename_pic(args, filename, pic):
 
     if args.should_write:
         LOGGER.info("Renaming and copying %s to %s" % (source_file, filename))
+
+        if not os.path.exists(source_file):
+            if args.should_skip_files_not_found:
+                LOGGER.error(
+                    "%s was not found, skipping since the skip not-found files flag was provided..." % source_file)
+                return
+            else:
+                raise FileNotFoundError(source_file)
+
         copyfile(source_file, filename)
+
     else:
         LOGGER.info("Write switch is OFF, simulating renaming and copying %s to %s" % (source_file, filename))
 
@@ -143,6 +129,8 @@ def prepare_folder(folder):
     if not os.path.exists(folder):
         LOGGER.info("Creating folder %s" % folder)
         os.makedirs(folder)
+    else:
+        LOGGER.info("Skipping creation of %s, we already have it" % folder)
 
 
 def _parse_args():
@@ -166,6 +154,11 @@ def _parse_args():
                         dest="should_write",
                         action="store_true",
                         help="Activates the actual writing process to disk, otherwise it is just simulated.")
+
+    parser.add_argument("--skip", "-k",
+                        dest="should_skip_files_not_found",
+                        action="store_true",
+                        help="Determines whether invalid files should be skipped. If not, the script will exit with an error.")
 
     parser.add_argument("--overwrite", "-o",
                         dest="should_overwrite",
@@ -192,7 +185,7 @@ class Pic():
 
     def __init__(self, nombre, id_ejemplar, ruta, nombre_objeto, genero, familia):
         self.nombreid = id_ejemplar
-        self.nombre = nombre
+        self.nombre = nombre[:nombre.find("-")].strip()
         self.familia = familia
 
         # We remove the leading '\'
