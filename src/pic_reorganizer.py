@@ -26,7 +26,7 @@ select_images_path = """
 
 original_pics_common_destination = r'Pictures\Campo'
 
-csv_file_location = r'..\test.csv'
+csv_file_location = r'..\db.csv'
 
 debug_limit = 30
 
